@@ -42,6 +42,10 @@ vi.mock("../../../src/api/test-cases.js", () => ({
   downloadTestCaseAttachmentContent: vi.fn(),
   deleteTestCaseComment: vi.fn(),
   addTestCaseStep: vi.fn(),
+  updateTestCaseStep: vi.fn(),
+  deleteTestCaseStep: vi.fn(),
+  updateTestCaseComment: vi.fn(),
+  deleteTestCaseAttachment: vi.fn(),
   buildPlainTextBodyJson: vi.fn((text: string) => ({
     type: "doc",
     content: [
@@ -596,5 +600,50 @@ describe("createTestCaseTools", () => {
     await expect(
       bundle.handlers.add_test_case_step({ testCaseId: 366821, bodyJson: [] }),
     ).rejects.toThrow('"bodyJson" must be an object (ProseMirror doc).');
+  });
+
+  it("update_test_case_step wraps body and forwards withExpectedResult", async () => {
+    const bundle = createTestCaseTools(client as never);
+    vi.mocked(api.updateTestCaseStep).mockResolvedValueOnce({});
+
+    await bundle.handlers.update_test_case_step({
+      stepId: 69369,
+      body: "edited",
+      withExpectedResult: true,
+    });
+
+    expect(api.updateTestCaseStep).toHaveBeenCalledWith(
+      client,
+      69369,
+      {
+        type: "doc",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "edited" }] }],
+      },
+      { withExpectedResult: true },
+    );
+  });
+
+  it("delete_test_case_step forwards stepId", async () => {
+    const bundle = createTestCaseTools(client as never);
+    vi.mocked(api.deleteTestCaseStep).mockResolvedValueOnce({});
+    await bundle.handlers.delete_test_case_step({ stepId: 69370 });
+    expect(api.deleteTestCaseStep).toHaveBeenCalledWith(client, 69370);
+  });
+
+  it("update_test_case_comment forwards commentId and body", async () => {
+    const bundle = createTestCaseTools(client as never);
+    vi.mocked(api.updateTestCaseComment).mockResolvedValueOnce({});
+    await bundle.handlers.update_test_case_comment({
+      commentId: 3003,
+      body: "edited body",
+    });
+    expect(api.updateTestCaseComment).toHaveBeenCalledWith(client, 3003, "edited body");
+  });
+
+  it("delete_test_case_attachment forwards attachmentId", async () => {
+    const bundle = createTestCaseTools(client as never);
+    vi.mocked(api.deleteTestCaseAttachment).mockResolvedValueOnce({});
+    await bundle.handlers.delete_test_case_attachment({ attachmentId: 1427 });
+    expect(api.deleteTestCaseAttachment).toHaveBeenCalledWith(client, 1427);
   });
 });

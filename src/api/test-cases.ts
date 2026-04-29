@@ -346,6 +346,21 @@ export function deleteTestCaseComment(
   return client.delete(`/api/comment/${commentId}`);
 }
 
+export function updateTestCaseComment(
+  client: AllureApiClient,
+  commentId: number,
+  body: string,
+): Promise<unknown> {
+  return client.patch(`/api/comment/${commentId}`, { body });
+}
+
+export function deleteTestCaseAttachment(
+  client: AllureApiClient,
+  attachmentId: number,
+): Promise<unknown> {
+  return client.delete(`/api/testcase/attachment/${attachmentId}`);
+}
+
 type ProseMirrorDoc = {
   type: "doc";
   content: Array<Record<string, unknown>>;
@@ -375,6 +390,26 @@ export function addTestCaseStep(
     queryParams.withExpectedResult = query.withExpectedResult;
   }
   return client.post("/api/testcase/step", payload, queryParams);
+}
+
+export function updateTestCaseStep(
+  client: AllureApiClient,
+  stepId: number,
+  bodyJson: unknown,
+  query: { withExpectedResult?: boolean } = {},
+): Promise<unknown> {
+  const queryParams: Record<string, string | number | boolean | undefined> = {};
+  if (query.withExpectedResult !== undefined) {
+    queryParams.withExpectedResult = query.withExpectedResult;
+  }
+  return client.patch(`/api/testcase/step/${stepId}`, { bodyJson }, queryParams);
+}
+
+export function deleteTestCaseStep(
+  client: AllureApiClient,
+  stepId: number,
+): Promise<unknown> {
+  return client.delete(`/api/testcase/step/${stepId}`);
 }
 
 export function listTestCaseAttachments(

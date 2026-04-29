@@ -735,6 +735,63 @@ export function createTestCaseTools(
         required: ["testCaseId"],
       },
     },
+    {
+      name: "update_test_case_step",
+      description:
+        "Replace the body of a single scenario step. Affects only the targeted step — other steps and their order are preserved. Pass body (plain text → single ProseMirror paragraph) or bodyJson (full doc shape) for the new content. Returns the full scenario tree.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          stepId: { type: "number" },
+          body: {
+            type: "string",
+            description: "Plain text body. Multi-line strings split into paragraphs. Ignored when bodyJson is provided.",
+          },
+          bodyJson: {
+            type: "object",
+            description: "Full ProseMirror doc shape. Wins over body when both are provided.",
+          },
+          withExpectedResult: {
+            type: "boolean",
+            description: "Optional. If true, ensures the step has an expected-result child slot.",
+          },
+        },
+        required: ["stepId"],
+      },
+    },
+    {
+      name: "delete_test_case_step",
+      description:
+        "Delete a single scenario step. Other steps and the rest of the test case scenario are not affected. Returns the updated scenario tree.",
+      inputSchema: {
+        type: "object" as const,
+        properties: { stepId: { type: "number" } },
+        required: ["stepId"],
+      },
+    },
+    {
+      name: "update_test_case_comment",
+      description:
+        "Edit the body of an existing comment. Only the targeted comment is changed; other comments are untouched.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          commentId: { type: "number" },
+          body: { type: "string", description: "New comment body. Markdown allowed." },
+        },
+        required: ["commentId", "body"],
+      },
+    },
+    {
+      name: "delete_test_case_attachment",
+      description:
+        "Delete a single attachment from a test case. Only the targeted attachment is removed; other attachments stay in place.",
+      inputSchema: {
+        type: "object" as const,
+        properties: { attachmentId: { type: "number" } },
+        required: ["attachmentId"],
+      },
+    },
   ];
 
   const handlers = {
@@ -997,20 +1054,7 @@ export function createTestCaseTools(
       const testCaseId = getRequiredNumber(args, "testCaseId");
       const afterId = getOptionalNumber(args, "afterId");
       const withExpectedResult = getOptionalBoolean(args, "withExpectedResult");
-      const explicitBodyJson = args.bodyJson;
-      const plainBody = getOptionalString(args, "body");
-
-      let bodyJson: unknown;
-      if (explicitBodyJson !== undefined) {
-        if (!explicitBodyJson || typeof explicitBodyJson !== "object" || Array.isArray(explicitBodyJson)) {
-          throw new Error("\"bodyJson\" must be an object (ProseMirror doc).");
-        }
-        bodyJson = explicitBodyJson;
-      } else if (plainBody !== undefined) {
-        bodyJson = api.buildPlainTextBodyJson(plainBody);
-      } else {
-        throw new Error("Either \"body\" or \"bodyJson\" must be provided.");
-      }
+      const bodyJson = resolveStepBodyJson(args);
 
       return api.addTestCaseStep(
         client,
@@ -1021,7 +1065,52 @@ export function createTestCaseTools(
         },
       );
     },
+    update_test_case_step: async (rawArgs: unknown) => {
+      const args = asObject(rawArgs);
+      const stepId = getRequiredNumber(args, "stepId");
+      const withExpectedResult = getOptionalBoolean(args, "withExpectedResult");
+      const bodyJson = resolveStepBodyJson(args);
+
+      return api.updateTestCaseStep(
+        client,
+        stepId,
+        bodyJson,
+        withExpectedResult !== undefined ? { withExpectedResult } : {},
+      );
+    },
+    delete_test_case_step: async (rawArgs: unknown) => {
+      const args = asObject(rawArgs);
+      const stepId = getRequiredNumber(args, "stepId");
+      return api.deleteTestCaseStep(client, stepId);
+    },
+    update_test_case_comment: async (rawArgs: unknown) => {
+      const args = asObject(rawArgs);
+      const commentId = getRequiredNumber(args, "commentId");
+      const body = getRequiredString(args, "body");
+      return api.updateTestCaseComment(client, commentId, body);
+    },
+    delete_test_case_attachment: async (rawArgs: unknown) => {
+      const args = asObject(rawArgs);
+      const attachmentId = getRequiredNumber(args, "attachmentId");
+      return api.deleteTestCaseAttachment(client, attachmentId);
+    },
   };
 
   return { tools, handlers };
+}
+
+function resolveStepBodyJson(args: ToolObject): unknown {
+  const explicitBodyJson = args.bodyJson;
+  const plainBody = typeof args.body === "string" ? args.body : undefined;
+
+  if (explicitBodyJson !== undefined) {
+    if (!explicitBodyJson || typeof explicitBodyJson !== "object" || Array.isArray(explicitBodyJson)) {
+      throw new Error("\"bodyJson\" must be an object (ProseMirror doc).");
+    }
+    return explicitBodyJson;
+  }
+  if (plainBody !== undefined) {
+    return api.buildPlainTextBodyJson(plainBody);
+  }
+  throw new Error("Either \"body\" or \"bodyJson\" must be provided.");
 }
