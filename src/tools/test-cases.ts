@@ -345,7 +345,7 @@ export function createTestCaseTools(
     },
     {
       name: "get_test_case_scenario",
-      description: "Get scenario for a test case.",
+      description: "Get scenario step tree for a test case, including shared step expansion. Returns root.children (top-level step ids), scenarioSteps (id -> step, may carry sharedStepId), sharedSteps (id -> shared step container), sharedStepScenarioSteps (id -> step inside a shared step), and attachments / sharedStepAttachments maps.",
       inputSchema: {
         type: "object" as const,
         properties: { id: { type: "number" } },
