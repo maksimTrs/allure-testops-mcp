@@ -379,9 +379,13 @@ export function buildPlainTextBodyJson(text: string): ProseMirrorDoc {
   return { type: "doc", content: paragraphs };
 }
 
+export type AddStepPayload =
+  | { testCaseId: number; bodyJson: unknown }
+  | { testCaseId: number; attachmentId: number };
+
 export function addTestCaseStep(
   client: AllureApiClient,
-  payload: { testCaseId: number; bodyJson: unknown },
+  payload: AddStepPayload,
   query: { afterId?: number; withExpectedResult?: boolean } = {},
 ): Promise<unknown> {
   const queryParams: Record<string, string | number | boolean | undefined> = {};
@@ -390,6 +394,29 @@ export function addTestCaseStep(
     queryParams.withExpectedResult = query.withExpectedResult;
   }
   return client.post("/api/testcase/step", payload, queryParams);
+}
+
+export async function addTestCaseStepWithFile(
+  client: AllureApiClient,
+  testCaseId: number,
+  file: AttachmentUploadInput,
+  options: { afterId?: number; withExpectedResult?: boolean } = {},
+): Promise<{ uploadedAttachment: unknown; stepResult: unknown }> {
+  const uploadResult = await uploadTestCaseAttachments(client, testCaseId, [file]);
+  const arr = Array.isArray(uploadResult) ? uploadResult : [];
+  const first = arr[0] as { id?: number } | undefined;
+  const attachmentId = first?.id;
+  if (typeof attachmentId !== "number") {
+    throw new Error(
+      `add_test_case_step_with_file: upload did not return an attachment id; got ${JSON.stringify(uploadResult)}`,
+    );
+  }
+  const stepResult = await addTestCaseStep(
+    client,
+    { testCaseId, attachmentId },
+    options,
+  );
+  return { uploadedAttachment: first, stepResult };
 }
 
 export function updateTestCaseStep(

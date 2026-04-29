@@ -710,18 +710,22 @@ export function createTestCaseTools(
     {
       name: "add_test_case_step",
       description:
-        "Append a new manual scenario step to a test case. Pass either body (plain text — wrapped into a single ProseMirror paragraph) or bodyJson (full ProseMirror doc) to provide the step content. afterId controls placement: if provided, the new step is inserted after that step id at the same level; if omitted, the server appends to the end of root.children. Existing steps are never modified or removed.",
+        "Append a new manual scenario step to a test case. Pass exactly one of: body (plain text — wrapped into a ProseMirror paragraph), bodyJson (full ProseMirror doc), or attachmentId (creates an attachment-step that references an already-uploaded test case attachment). afterId controls placement: if provided, the new step is inserted after that step id at the same level; if omitted, the server appends to the end of root.children. Existing steps are never modified or removed.",
       inputSchema: {
         type: "object" as const,
         properties: {
           testCaseId: { type: "number" },
           body: {
             type: "string",
-            description: "Plain text body. Multi-line strings split into paragraphs. Ignored when bodyJson is provided.",
+            description: "Plain text body. Multi-line strings split into paragraphs. Ignored when bodyJson or attachmentId is provided.",
           },
           bodyJson: {
             type: "object",
-            description: "Full ProseMirror doc shape, e.g. {type:\"doc\",content:[{type:\"paragraph\",content:[{type:\"text\",text:\"...\"}]}]}. Wins over body when both are provided.",
+            description: "Full ProseMirror doc shape, e.g. {type:\"doc\",content:[{type:\"paragraph\",content:[{type:\"text\",text:\"...\"}]}]}. Wins over body. Ignored when attachmentId is provided.",
+          },
+          attachmentId: {
+            type: "number",
+            description: "ID of an existing test case attachment (e.g. from upload_test_case_attachments). When provided, the step is created as an attachment-step (no text body); body and bodyJson are ignored.",
           },
           afterId: {
             type: "number",
@@ -733,6 +737,36 @@ export function createTestCaseTools(
           },
         },
         required: ["testCaseId"],
+      },
+    },
+    {
+      name: "add_test_case_step_with_file",
+      description:
+        "Convenience helper: upload a file and create an attachment-step referencing it, in one call. Equivalent to calling upload_test_case_attachments then add_test_case_step with attachmentId. Returns { uploadedAttachment, stepResult } so callers can see both the new attachment id and the createdStepId.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          testCaseId: { type: "number" },
+          file: {
+            type: "object",
+            description: "File source. Provide either path (absolute filesystem path on the MCP host) or base64 (inline encoded content).",
+            properties: {
+              path: { type: "string", description: "Absolute path to the file on the local filesystem." },
+              base64: { type: "string", description: "Base64-encoded file content. Use either path or base64, not both." },
+              name: { type: "string", description: "Filename to register on Allure. Defaults to basename of path or generated name for base64." },
+              mimeType: { type: "string", description: "MIME type. Defaults to application/octet-stream." },
+            },
+          },
+          afterId: {
+            type: "number",
+            description: "Step id after which to insert. If omitted, appended.",
+          },
+          withExpectedResult: {
+            type: "boolean",
+            description: "Pass-through to the step creation. Defaults to false.",
+          },
+        },
+        required: ["testCaseId", "file"],
       },
     },
     {
@@ -1054,16 +1088,52 @@ export function createTestCaseTools(
       const testCaseId = getRequiredNumber(args, "testCaseId");
       const afterId = getOptionalNumber(args, "afterId");
       const withExpectedResult = getOptionalBoolean(args, "withExpectedResult");
-      const bodyJson = resolveStepBodyJson(args);
+      const attachmentId = getOptionalNumber(args, "attachmentId");
 
+      const queryOptions = {
+        ...(afterId !== undefined ? { afterId } : {}),
+        ...(withExpectedResult !== undefined ? { withExpectedResult } : {}),
+      };
+
+      if (attachmentId !== undefined) {
+        return api.addTestCaseStep(
+          client,
+          { testCaseId, attachmentId },
+          queryOptions,
+        );
+      }
+
+      const bodyJson = resolveStepBodyJson(args);
       return api.addTestCaseStep(
         client,
         { testCaseId, bodyJson },
-        {
-          ...(afterId !== undefined ? { afterId } : {}),
-          ...(withExpectedResult !== undefined ? { withExpectedResult } : {}),
-        },
+        queryOptions,
       );
+    },
+    add_test_case_step_with_file: async (rawArgs: unknown) => {
+      const args = asObject(rawArgs);
+      const testCaseId = getRequiredNumber(args, "testCaseId");
+      const afterId = getOptionalNumber(args, "afterId");
+      const withExpectedResult = getOptionalBoolean(args, "withExpectedResult");
+
+      const fileRaw = args.file;
+      if (!fileRaw || typeof fileRaw !== "object" || Array.isArray(fileRaw)) {
+        throw new Error("\"file\" must be an object.");
+      }
+      const fileObj = fileRaw as Record<string, unknown>;
+      const file: api.AttachmentUploadInput = {};
+      if (typeof fileObj.path === "string") file.path = fileObj.path;
+      if (typeof fileObj.base64 === "string") file.base64 = fileObj.base64;
+      if (typeof fileObj.name === "string") file.name = fileObj.name;
+      if (typeof fileObj.mimeType === "string") file.mimeType = fileObj.mimeType;
+      if (!file.path && !file.base64) {
+        throw new Error("\"file\" must include either \"path\" or \"base64\".");
+      }
+
+      return api.addTestCaseStepWithFile(client, testCaseId, file, {
+        ...(afterId !== undefined ? { afterId } : {}),
+        ...(withExpectedResult !== undefined ? { withExpectedResult } : {}),
+      });
     },
     update_test_case_step: async (rawArgs: unknown) => {
       const args = asObject(rawArgs);
