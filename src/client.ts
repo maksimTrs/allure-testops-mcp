@@ -50,6 +50,73 @@ export class AllureApiClient {
     return this.request<T>("DELETE", path, undefined, query);
   }
 
+  async postMultipart<T>(
+    path: string,
+    formData: FormData,
+    query?: QueryParams,
+  ): Promise<T> {
+    const accessToken = await this.tokenManager.getAccessToken();
+    const url = this.buildUrl(path, query);
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        // Do not set Content-Type — fetch will add multipart boundary automatically.
+      },
+      body: formData,
+      signal: AbortSignal.timeout(this.requestTimeoutMs),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(
+        `Allure API POST ${path} (multipart) failed (${response.status}): ${text}`,
+      );
+    }
+
+    if (response.status === 204) {
+      return undefined as T;
+    }
+
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      return (await response.json()) as T;
+    }
+
+    return (await response.text()) as T;
+  }
+
+  async getBinary(
+    path: string,
+    query?: QueryParams,
+  ): Promise<{ contentType: string; bytes: Uint8Array }> {
+    const accessToken = await this.tokenManager.getAccessToken();
+    const url = this.buildUrl(path, query);
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      signal: AbortSignal.timeout(this.requestTimeoutMs),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(
+        `Allure API GET ${path} (binary) failed (${response.status}): ${text}`,
+      );
+    }
+
+    const buffer = await response.arrayBuffer();
+    return {
+      contentType: response.headers.get("content-type") ?? "application/octet-stream",
+      bytes: new Uint8Array(buffer),
+    };
+  }
+
   private async request<T>(
     method: string,
     path: string,

@@ -322,3 +322,100 @@ export function renameCustomFieldValue(
 ): Promise<unknown> {
   return client.patch(`/api/cfv/${valueId}`, { name: newName });
 }
+
+export function getTestCaseComments(
+  client: AllureApiClient,
+  testCaseId: number,
+  query: QueryParams = {},
+): Promise<unknown> {
+  return client.get("/api/comment", { testCaseId, ...query });
+}
+
+export function addTestCaseComment(
+  client: AllureApiClient,
+  testCaseId: number,
+  body: string,
+): Promise<unknown> {
+  return client.post("/api/comment", { testCaseId, body });
+}
+
+export function listTestCaseAttachments(
+  client: AllureApiClient,
+  testCaseId: number,
+  query: QueryParams = {},
+): Promise<unknown> {
+  return client.get("/api/testcase/attachment", { testCaseId, ...query });
+}
+
+export type AttachmentUploadInput = {
+  path?: string;
+  base64?: string;
+  name?: string;
+  mimeType?: string;
+};
+
+export async function uploadTestCaseAttachments(
+  client: AllureApiClient,
+  testCaseId: number,
+  files: AttachmentUploadInput[],
+): Promise<unknown> {
+  const fs = await import("node:fs/promises");
+  const path = await import("node:path");
+
+  const form = new FormData();
+  for (let i = 0; i < files.length; i += 1) {
+    const file = files[i];
+    let bytes: Uint8Array;
+    let filename: string;
+    if (file.path) {
+      const data = await fs.readFile(file.path);
+      bytes = new Uint8Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
+      filename = file.name ?? path.basename(file.path);
+    } else if (file.base64) {
+      const buf = Buffer.from(file.base64, "base64");
+      bytes = new Uint8Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
+      filename = file.name ?? `upload-${Date.now()}-${i}`;
+    } else {
+      throw new Error(`files[${i}] must include either "path" or "base64".`);
+    }
+    const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+    const blob = new Blob([ab], { type: file.mimeType ?? "application/octet-stream" });
+    form.append("file", blob, filename);
+  }
+
+  return client.postMultipart("/api/testcase/attachment", form, { testCaseId });
+}
+
+export async function downloadTestCaseAttachmentContent(
+  client: AllureApiClient,
+  attachmentId: number,
+  options: { savePath?: string } = {},
+): Promise<{
+  attachmentId: number;
+  contentType: string;
+  contentLength: number;
+  savedTo?: string;
+  base64?: string;
+}> {
+  const { contentType, bytes } = await client.getBinary(
+    `/api/testcase/attachment/${attachmentId}/content`,
+  );
+
+  if (options.savePath) {
+    const fs = await import("node:fs/promises");
+    await fs.writeFile(options.savePath, bytes);
+    return {
+      attachmentId,
+      contentType,
+      contentLength: bytes.byteLength,
+      savedTo: options.savePath,
+    };
+  }
+
+  return {
+    attachmentId,
+    contentType,
+    contentLength: bytes.byteLength,
+    base64: Buffer.from(bytes).toString("base64"),
+  };
+}

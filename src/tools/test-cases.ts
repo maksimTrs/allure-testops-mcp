@@ -603,6 +603,101 @@ export function createTestCaseTools(
         required: ["fieldName"],
       },
     },
+    {
+      name: "get_test_case_comments",
+      description:
+        "List comments on a test case. Returns a paginated response with id, body, bodyHtml, testCaseId, createdDate, createdBy. Append-only — does not modify any data.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          testCaseId: { type: "number" },
+          page: { type: "number", description: "Page number (0-based)." },
+          size: { type: "number", description: "Page size." },
+          sort: { type: "array", items: { type: "string" } },
+        },
+        required: ["testCaseId"],
+      },
+    },
+    {
+      name: "add_test_case_comment",
+      description:
+        "Add a new comment to a test case. Append-only — never affects existing comments. Server fills in bodyHtml, createdDate, createdBy automatically. Returns the created comment with its id.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          testCaseId: { type: "number" },
+          body: { type: "string", description: "Comment body. Markdown allowed." },
+        },
+        required: ["testCaseId", "body"],
+      },
+    },
+    {
+      name: "list_test_case_attachments",
+      description:
+        "List attachments associated with a test case. Returns a paginated response with id, name, contentType, contentLength, missed.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          testCaseId: { type: "number" },
+          page: { type: "number", description: "Page number (0-based)." },
+          size: { type: "number", description: "Page size." },
+          sort: { type: "array", items: { type: "string" } },
+        },
+        required: ["testCaseId"],
+      },
+    },
+    {
+      name: "upload_test_case_attachments",
+      description:
+        "Upload one or more files as attachments on a test case (multipart). Each file may be specified either by an absolute filesystem path or by inline base64. Append-only — does not affect existing attachments. Returns an array of created attachments with id, name, contentType, contentLength.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          testCaseId: { type: "number" },
+          files: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                path: {
+                  type: "string",
+                  description: "Absolute path to the file on the local filesystem (where the MCP server runs).",
+                },
+                base64: {
+                  type: "string",
+                  description: "Base64-encoded file content. Use either path or base64, not both.",
+                },
+                name: {
+                  type: "string",
+                  description: "Filename to register on Allure. Defaults to basename of path or generated name for base64.",
+                },
+                mimeType: {
+                  type: "string",
+                  description: "MIME type. Defaults to application/octet-stream.",
+                },
+              },
+            },
+          },
+        },
+        required: ["testCaseId", "files"],
+      },
+    },
+    {
+      name: "download_test_case_attachment_content",
+      description:
+        "Download the binary content of a test case attachment. If savePath is provided, the file is written there and metadata is returned. Otherwise the body is returned base64-encoded.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          attachmentId: { type: "number" },
+          savePath: {
+            type: "string",
+            description: "Optional absolute filesystem path where the attachment will be written. If omitted, base64-encoded body is returned in the response.",
+          },
+        },
+        required: ["attachmentId"],
+      },
+    },
   ];
 
   const handlers = {
@@ -805,6 +900,54 @@ export function createTestCaseTools(
 
       return api.searchTestCases(client, projectId, rql, {
         ...pickPagination(args),
+      });
+    },
+    get_test_case_comments: async (rawArgs: unknown) => {
+      const args = asObject(rawArgs);
+      const testCaseId = getRequiredNumber(args, "testCaseId");
+      return api.getTestCaseComments(client, testCaseId, pickPagination(args));
+    },
+    add_test_case_comment: async (rawArgs: unknown) => {
+      const args = asObject(rawArgs);
+      const testCaseId = getRequiredNumber(args, "testCaseId");
+      const body = getRequiredString(args, "body");
+      return api.addTestCaseComment(client, testCaseId, body);
+    },
+    list_test_case_attachments: async (rawArgs: unknown) => {
+      const args = asObject(rawArgs);
+      const testCaseId = getRequiredNumber(args, "testCaseId");
+      return api.listTestCaseAttachments(client, testCaseId, pickPagination(args));
+    },
+    upload_test_case_attachments: async (rawArgs: unknown) => {
+      const args = asObject(rawArgs);
+      const testCaseId = getRequiredNumber(args, "testCaseId");
+      const filesRaw = args.files;
+      if (!Array.isArray(filesRaw) || filesRaw.length === 0) {
+        throw new Error("\"files\" must be a non-empty array.");
+      }
+      const files: api.AttachmentUploadInput[] = filesRaw.map((entry, idx) => {
+        if (!entry || typeof entry !== "object") {
+          throw new Error(`"files[${idx}]" must be an object.`);
+        }
+        const obj = entry as Record<string, unknown>;
+        const file: api.AttachmentUploadInput = {};
+        if (typeof obj.path === "string") file.path = obj.path;
+        if (typeof obj.base64 === "string") file.base64 = obj.base64;
+        if (typeof obj.name === "string") file.name = obj.name;
+        if (typeof obj.mimeType === "string") file.mimeType = obj.mimeType;
+        if (!file.path && !file.base64) {
+          throw new Error(`"files[${idx}]" must include either "path" or "base64".`);
+        }
+        return file;
+      });
+      return api.uploadTestCaseAttachments(client, testCaseId, files);
+    },
+    download_test_case_attachment_content: async (rawArgs: unknown) => {
+      const args = asObject(rawArgs);
+      const attachmentId = getRequiredNumber(args, "attachmentId");
+      const savePath = getOptionalString(args, "savePath");
+      return api.downloadTestCaseAttachmentContent(client, attachmentId, {
+        ...(savePath !== undefined ? { savePath } : {}),
       });
     },
   };

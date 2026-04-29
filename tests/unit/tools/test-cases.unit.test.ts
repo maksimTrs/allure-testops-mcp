@@ -35,6 +35,11 @@ vi.mock("../../../src/api/test-cases.js", () => ({
   bulkSetTestCaseCustomFields: vi.fn(),
   deleteCustomFieldValue: vi.fn(),
   renameCustomFieldValue: vi.fn(),
+  getTestCaseComments: vi.fn(),
+  addTestCaseComment: vi.fn(),
+  listTestCaseAttachments: vi.fn(),
+  uploadTestCaseAttachments: vi.fn(),
+  downloadTestCaseAttachmentContent: vi.fn(),
 }));
 
 describe("createTestCaseTools", () => {
@@ -448,5 +453,78 @@ describe("createTestCaseTools", () => {
       "targetValueId",
     ]);
     expectRequiredFields(bundle.tools, "search_test_cases_by_missing_field", ["fieldName"]);
+  });
+
+  it("comment handlers forward expected arguments", async () => {
+    const bundle = createTestCaseTools(client as never);
+    vi.mocked(api.getTestCaseComments).mockResolvedValueOnce({ content: [] });
+    vi.mocked(api.addTestCaseComment).mockResolvedValueOnce({ id: 9001 });
+
+    await bundle.handlers.get_test_case_comments({ testCaseId: 42, page: 0, size: 5 });
+    await bundle.handlers.add_test_case_comment({ testCaseId: 42, body: "hello" });
+
+    expect(api.getTestCaseComments).toHaveBeenCalledWith(client, 42, {
+      page: 0,
+      size: 5,
+      sort: undefined,
+    });
+    expect(api.addTestCaseComment).toHaveBeenCalledWith(client, 42, "hello");
+  });
+
+  it("add_test_case_comment requires non-empty body", async () => {
+    const bundle = createTestCaseTools(client as never);
+    await expect(
+      bundle.handlers.add_test_case_comment({ testCaseId: 42 }),
+    ).rejects.toThrow('"body" must be a non-empty string.');
+  });
+
+  it("attachment handlers forward expected arguments and validate inputs", async () => {
+    const bundle = createTestCaseTools(client as never);
+    vi.mocked(api.listTestCaseAttachments).mockResolvedValueOnce({ content: [] });
+    vi.mocked(api.uploadTestCaseAttachments).mockResolvedValueOnce([{ id: 1 }]);
+    vi.mocked(api.downloadTestCaseAttachmentContent).mockResolvedValueOnce({
+      attachmentId: 1,
+      contentType: "text/plain",
+      contentLength: 3,
+      base64: "YWJj",
+    });
+
+    await bundle.handlers.list_test_case_attachments({ testCaseId: 7 });
+    await bundle.handlers.upload_test_case_attachments({
+      testCaseId: 7,
+      files: [
+        { path: "/tmp/a.txt", mimeType: "text/plain" },
+        { base64: "YWJj", name: "b.txt" },
+      ],
+    });
+    await bundle.handlers.download_test_case_attachment_content({ attachmentId: 1 });
+    await bundle.handlers.download_test_case_attachment_content({
+      attachmentId: 1,
+      savePath: "/tmp/out.bin",
+    });
+
+    expect(api.listTestCaseAttachments).toHaveBeenCalledWith(client, 7, {
+      page: undefined,
+      size: undefined,
+      sort: undefined,
+    });
+    expect(api.uploadTestCaseAttachments).toHaveBeenCalledWith(client, 7, [
+      { path: "/tmp/a.txt", mimeType: "text/plain" },
+      { base64: "YWJj", name: "b.txt" },
+    ]);
+    expect(api.downloadTestCaseAttachmentContent).toHaveBeenNthCalledWith(1, client, 1, {});
+    expect(api.downloadTestCaseAttachmentContent).toHaveBeenNthCalledWith(2, client, 1, {
+      savePath: "/tmp/out.bin",
+    });
+  });
+
+  it("upload_test_case_attachments rejects bad input", async () => {
+    const bundle = createTestCaseTools(client as never);
+    await expect(
+      bundle.handlers.upload_test_case_attachments({ testCaseId: 7, files: [] }),
+    ).rejects.toThrow('"files" must be a non-empty array.');
+    await expect(
+      bundle.handlers.upload_test_case_attachments({ testCaseId: 7, files: [{}] }),
+    ).rejects.toThrow('"files[0]" must include either "path" or "base64".');
   });
 });
