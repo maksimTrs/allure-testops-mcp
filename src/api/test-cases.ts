@@ -149,7 +149,7 @@ export function getTestCaseHistory(
 }
 
 export function getTestCaseScenario(client: AllureApiClient, id: number): Promise<unknown> {
-  return client.get(`/api/testcase/${id}/scenario`);
+  return client.get(`/api/testcase/${id}/step`);
 }
 
 export function getTestCaseTags(client: AllureApiClient, testCaseId: number): Promise<unknown> {
