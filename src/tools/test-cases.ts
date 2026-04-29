@@ -603,6 +603,195 @@ export function createTestCaseTools(
         required: ["fieldName"],
       },
     },
+    {
+      name: "get_test_case_comments",
+      description:
+        "List comments on a test case. Returns a paginated response with id, body, bodyHtml, testCaseId, createdDate, createdBy. Append-only — does not modify any data.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          testCaseId: { type: "number" },
+          page: { type: "number", description: "Page number (0-based)." },
+          size: { type: "number", description: "Page size." },
+          sort: { type: "array", items: { type: "string" } },
+        },
+        required: ["testCaseId"],
+      },
+    },
+    {
+      name: "add_test_case_comment",
+      description:
+        "Add a new comment to a test case. Append-only — never affects existing comments. Server fills in bodyHtml, createdDate, createdBy automatically. Returns the created comment with its id.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          testCaseId: { type: "number" },
+          body: { type: "string", description: "Comment body. Markdown allowed." },
+        },
+        required: ["testCaseId", "body"],
+      },
+    },
+    {
+      name: "list_test_case_attachments",
+      description:
+        "List attachments associated with a test case. Returns a paginated response with id, name, contentType, contentLength, missed.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          testCaseId: { type: "number" },
+          page: { type: "number", description: "Page number (0-based)." },
+          size: { type: "number", description: "Page size." },
+          sort: { type: "array", items: { type: "string" } },
+        },
+        required: ["testCaseId"],
+      },
+    },
+    {
+      name: "upload_test_case_attachments",
+      description:
+        "Upload one or more files as attachments on a test case (multipart). Each file may be specified either by an absolute filesystem path or by inline base64. Append-only — does not affect existing attachments. Returns an array of created attachments with id, name, contentType, contentLength.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          testCaseId: { type: "number" },
+          files: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                path: {
+                  type: "string",
+                  description: "Absolute path to the file on the local filesystem (where the MCP server runs).",
+                },
+                base64: {
+                  type: "string",
+                  description: "Base64-encoded file content. Use either path or base64, not both.",
+                },
+                name: {
+                  type: "string",
+                  description: "Filename to register on Allure. Defaults to basename of path or generated name for base64.",
+                },
+                mimeType: {
+                  type: "string",
+                  description: "MIME type. Defaults to application/octet-stream.",
+                },
+              },
+            },
+          },
+        },
+        required: ["testCaseId", "files"],
+      },
+    },
+    {
+      name: "download_test_case_attachment_content",
+      description:
+        "Download the binary content of a test case attachment. If savePath is provided, the file is written there and metadata is returned. Otherwise the body is returned base64-encoded.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          attachmentId: { type: "number" },
+          savePath: {
+            type: "string",
+            description: "Optional absolute filesystem path where the attachment will be written. If omitted, base64-encoded body is returned in the response.",
+          },
+        },
+        required: ["attachmentId"],
+      },
+    },
+    {
+      name: "delete_test_case_comment",
+      description: "Delete a comment by id. Affects only the specified comment, leaves all other comments untouched.",
+      inputSchema: {
+        type: "object" as const,
+        properties: { commentId: { type: "number" } },
+        required: ["commentId"],
+      },
+    },
+    {
+      name: "add_test_case_step",
+      description:
+        "Append a new manual scenario step to a test case. Pass either body (plain text — wrapped into a single ProseMirror paragraph) or bodyJson (full ProseMirror doc) to provide the step content. afterId controls placement: if provided, the new step is inserted after that step id at the same level; if omitted, the server appends to the end of root.children. Existing steps are never modified or removed.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          testCaseId: { type: "number" },
+          body: {
+            type: "string",
+            description: "Plain text body. Multi-line strings split into paragraphs. Ignored when bodyJson is provided.",
+          },
+          bodyJson: {
+            type: "object",
+            description: "Full ProseMirror doc shape, e.g. {type:\"doc\",content:[{type:\"paragraph\",content:[{type:\"text\",text:\"...\"}]}]}. Wins over body when both are provided.",
+          },
+          afterId: {
+            type: "number",
+            description: "Step id after which to insert the new step. If omitted, the step is appended.",
+          },
+          withExpectedResult: {
+            type: "boolean",
+            description: "Whether the step should be created with an expected-result child slot. Defaults to false.",
+          },
+        },
+        required: ["testCaseId"],
+      },
+    },
+    {
+      name: "update_test_case_step",
+      description:
+        "Replace the body of a single scenario step. Affects only the targeted step — other steps and their order are preserved. Pass body (plain text → single ProseMirror paragraph) or bodyJson (full doc shape) for the new content. Returns the full scenario tree.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          stepId: { type: "number" },
+          body: {
+            type: "string",
+            description: "Plain text body. Multi-line strings split into paragraphs. Ignored when bodyJson is provided.",
+          },
+          bodyJson: {
+            type: "object",
+            description: "Full ProseMirror doc shape. Wins over body when both are provided.",
+          },
+          withExpectedResult: {
+            type: "boolean",
+            description: "Optional. If true, ensures the step has an expected-result child slot.",
+          },
+        },
+        required: ["stepId"],
+      },
+    },
+    {
+      name: "delete_test_case_step",
+      description:
+        "Delete a single scenario step. Other steps and the rest of the test case scenario are not affected. Returns the updated scenario tree.",
+      inputSchema: {
+        type: "object" as const,
+        properties: { stepId: { type: "number" } },
+        required: ["stepId"],
+      },
+    },
+    {
+      name: "update_test_case_comment",
+      description:
+        "Edit the body of an existing comment. Only the targeted comment is changed; other comments are untouched.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          commentId: { type: "number" },
+          body: { type: "string", description: "New comment body. Markdown allowed." },
+        },
+        required: ["commentId", "body"],
+      },
+    },
+    {
+      name: "delete_test_case_attachment",
+      description:
+        "Delete a single attachment from a test case. Only the targeted attachment is removed; other attachments stay in place.",
+      inputSchema: {
+        type: "object" as const,
+        properties: { attachmentId: { type: "number" } },
+        required: ["attachmentId"],
+      },
+    },
   ];
 
   const handlers = {
@@ -807,7 +996,121 @@ export function createTestCaseTools(
         ...pickPagination(args),
       });
     },
+    get_test_case_comments: async (rawArgs: unknown) => {
+      const args = asObject(rawArgs);
+      const testCaseId = getRequiredNumber(args, "testCaseId");
+      return api.getTestCaseComments(client, testCaseId, pickPagination(args));
+    },
+    add_test_case_comment: async (rawArgs: unknown) => {
+      const args = asObject(rawArgs);
+      const testCaseId = getRequiredNumber(args, "testCaseId");
+      const body = getRequiredString(args, "body");
+      return api.addTestCaseComment(client, testCaseId, body);
+    },
+    list_test_case_attachments: async (rawArgs: unknown) => {
+      const args = asObject(rawArgs);
+      const testCaseId = getRequiredNumber(args, "testCaseId");
+      return api.listTestCaseAttachments(client, testCaseId, pickPagination(args));
+    },
+    upload_test_case_attachments: async (rawArgs: unknown) => {
+      const args = asObject(rawArgs);
+      const testCaseId = getRequiredNumber(args, "testCaseId");
+      const filesRaw = args.files;
+      if (!Array.isArray(filesRaw) || filesRaw.length === 0) {
+        throw new Error("\"files\" must be a non-empty array.");
+      }
+      const files: api.AttachmentUploadInput[] = filesRaw.map((entry, idx) => {
+        if (!entry || typeof entry !== "object") {
+          throw new Error(`"files[${idx}]" must be an object.`);
+        }
+        const obj = entry as Record<string, unknown>;
+        const file: api.AttachmentUploadInput = {};
+        if (typeof obj.path === "string") file.path = obj.path;
+        if (typeof obj.base64 === "string") file.base64 = obj.base64;
+        if (typeof obj.name === "string") file.name = obj.name;
+        if (typeof obj.mimeType === "string") file.mimeType = obj.mimeType;
+        if (!file.path && !file.base64) {
+          throw new Error(`"files[${idx}]" must include either "path" or "base64".`);
+        }
+        return file;
+      });
+      return api.uploadTestCaseAttachments(client, testCaseId, files);
+    },
+    download_test_case_attachment_content: async (rawArgs: unknown) => {
+      const args = asObject(rawArgs);
+      const attachmentId = getRequiredNumber(args, "attachmentId");
+      const savePath = getOptionalString(args, "savePath");
+      return api.downloadTestCaseAttachmentContent(client, attachmentId, {
+        ...(savePath !== undefined ? { savePath } : {}),
+      });
+    },
+    delete_test_case_comment: async (rawArgs: unknown) => {
+      const args = asObject(rawArgs);
+      const commentId = getRequiredNumber(args, "commentId");
+      return api.deleteTestCaseComment(client, commentId);
+    },
+    add_test_case_step: async (rawArgs: unknown) => {
+      const args = asObject(rawArgs);
+      const testCaseId = getRequiredNumber(args, "testCaseId");
+      const afterId = getOptionalNumber(args, "afterId");
+      const withExpectedResult = getOptionalBoolean(args, "withExpectedResult");
+      const bodyJson = resolveStepBodyJson(args);
+
+      return api.addTestCaseStep(
+        client,
+        { testCaseId, bodyJson },
+        {
+          ...(afterId !== undefined ? { afterId } : {}),
+          ...(withExpectedResult !== undefined ? { withExpectedResult } : {}),
+        },
+      );
+    },
+    update_test_case_step: async (rawArgs: unknown) => {
+      const args = asObject(rawArgs);
+      const stepId = getRequiredNumber(args, "stepId");
+      const withExpectedResult = getOptionalBoolean(args, "withExpectedResult");
+      const bodyJson = resolveStepBodyJson(args);
+
+      return api.updateTestCaseStep(
+        client,
+        stepId,
+        bodyJson,
+        withExpectedResult !== undefined ? { withExpectedResult } : {},
+      );
+    },
+    delete_test_case_step: async (rawArgs: unknown) => {
+      const args = asObject(rawArgs);
+      const stepId = getRequiredNumber(args, "stepId");
+      return api.deleteTestCaseStep(client, stepId);
+    },
+    update_test_case_comment: async (rawArgs: unknown) => {
+      const args = asObject(rawArgs);
+      const commentId = getRequiredNumber(args, "commentId");
+      const body = getRequiredString(args, "body");
+      return api.updateTestCaseComment(client, commentId, body);
+    },
+    delete_test_case_attachment: async (rawArgs: unknown) => {
+      const args = asObject(rawArgs);
+      const attachmentId = getRequiredNumber(args, "attachmentId");
+      return api.deleteTestCaseAttachment(client, attachmentId);
+    },
   };
 
   return { tools, handlers };
+}
+
+function resolveStepBodyJson(args: ToolObject): unknown {
+  const explicitBodyJson = args.bodyJson;
+  const plainBody = typeof args.body === "string" ? args.body : undefined;
+
+  if (explicitBodyJson !== undefined) {
+    if (!explicitBodyJson || typeof explicitBodyJson !== "object" || Array.isArray(explicitBodyJson)) {
+      throw new Error("\"bodyJson\" must be an object (ProseMirror doc).");
+    }
+    return explicitBodyJson;
+  }
+  if (plainBody !== undefined) {
+    return api.buildPlainTextBodyJson(plainBody);
+  }
+  throw new Error("Either \"body\" or \"bodyJson\" must be provided.");
 }

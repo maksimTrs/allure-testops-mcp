@@ -35,6 +35,26 @@ vi.mock("../../../src/api/test-cases.js", () => ({
   bulkSetTestCaseCustomFields: vi.fn(),
   deleteCustomFieldValue: vi.fn(),
   renameCustomFieldValue: vi.fn(),
+  getTestCaseComments: vi.fn(),
+  addTestCaseComment: vi.fn(),
+  listTestCaseAttachments: vi.fn(),
+  uploadTestCaseAttachments: vi.fn(),
+  downloadTestCaseAttachmentContent: vi.fn(),
+  deleteTestCaseComment: vi.fn(),
+  addTestCaseStep: vi.fn(),
+  updateTestCaseStep: vi.fn(),
+  deleteTestCaseStep: vi.fn(),
+  updateTestCaseComment: vi.fn(),
+  deleteTestCaseAttachment: vi.fn(),
+  buildPlainTextBodyJson: vi.fn((text: string) => ({
+    type: "doc",
+    content: [
+      {
+        type: "paragraph",
+        content: [{ type: "text", text }],
+      },
+    ],
+  })),
 }));
 
 describe("createTestCaseTools", () => {
@@ -448,5 +468,182 @@ describe("createTestCaseTools", () => {
       "targetValueId",
     ]);
     expectRequiredFields(bundle.tools, "search_test_cases_by_missing_field", ["fieldName"]);
+  });
+
+  it("comment handlers forward expected arguments", async () => {
+    const bundle = createTestCaseTools(client as never);
+    vi.mocked(api.getTestCaseComments).mockResolvedValueOnce({ content: [] });
+    vi.mocked(api.addTestCaseComment).mockResolvedValueOnce({ id: 9001 });
+
+    await bundle.handlers.get_test_case_comments({ testCaseId: 42, page: 0, size: 5 });
+    await bundle.handlers.add_test_case_comment({ testCaseId: 42, body: "hello" });
+
+    expect(api.getTestCaseComments).toHaveBeenCalledWith(client, 42, {
+      page: 0,
+      size: 5,
+      sort: undefined,
+    });
+    expect(api.addTestCaseComment).toHaveBeenCalledWith(client, 42, "hello");
+  });
+
+  it("add_test_case_comment requires non-empty body", async () => {
+    const bundle = createTestCaseTools(client as never);
+    await expect(
+      bundle.handlers.add_test_case_comment({ testCaseId: 42 }),
+    ).rejects.toThrow('"body" must be a non-empty string.');
+  });
+
+  it("attachment handlers forward expected arguments and validate inputs", async () => {
+    const bundle = createTestCaseTools(client as never);
+    vi.mocked(api.listTestCaseAttachments).mockResolvedValueOnce({ content: [] });
+    vi.mocked(api.uploadTestCaseAttachments).mockResolvedValueOnce([{ id: 1 }]);
+    vi.mocked(api.downloadTestCaseAttachmentContent).mockResolvedValueOnce({
+      attachmentId: 1,
+      contentType: "text/plain",
+      contentLength: 3,
+      base64: "YWJj",
+    });
+
+    await bundle.handlers.list_test_case_attachments({ testCaseId: 7 });
+    await bundle.handlers.upload_test_case_attachments({
+      testCaseId: 7,
+      files: [
+        { path: "/tmp/a.txt", mimeType: "text/plain" },
+        { base64: "YWJj", name: "b.txt" },
+      ],
+    });
+    await bundle.handlers.download_test_case_attachment_content({ attachmentId: 1 });
+    await bundle.handlers.download_test_case_attachment_content({
+      attachmentId: 1,
+      savePath: "/tmp/out.bin",
+    });
+
+    expect(api.listTestCaseAttachments).toHaveBeenCalledWith(client, 7, {
+      page: undefined,
+      size: undefined,
+      sort: undefined,
+    });
+    expect(api.uploadTestCaseAttachments).toHaveBeenCalledWith(client, 7, [
+      { path: "/tmp/a.txt", mimeType: "text/plain" },
+      { base64: "YWJj", name: "b.txt" },
+    ]);
+    expect(api.downloadTestCaseAttachmentContent).toHaveBeenNthCalledWith(1, client, 1, {});
+    expect(api.downloadTestCaseAttachmentContent).toHaveBeenNthCalledWith(2, client, 1, {
+      savePath: "/tmp/out.bin",
+    });
+  });
+
+  it("upload_test_case_attachments rejects bad input", async () => {
+    const bundle = createTestCaseTools(client as never);
+    await expect(
+      bundle.handlers.upload_test_case_attachments({ testCaseId: 7, files: [] }),
+    ).rejects.toThrow('"files" must be a non-empty array.');
+    await expect(
+      bundle.handlers.upload_test_case_attachments({ testCaseId: 7, files: [{}] }),
+    ).rejects.toThrow('"files[0]" must include either "path" or "base64".');
+  });
+
+  it("delete_test_case_comment forwards commentId", async () => {
+    const bundle = createTestCaseTools(client as never);
+    vi.mocked(api.deleteTestCaseComment).mockResolvedValueOnce(undefined);
+    await bundle.handlers.delete_test_case_comment({ commentId: 3005 });
+    expect(api.deleteTestCaseComment).toHaveBeenCalledWith(client, 3005);
+  });
+
+  it("add_test_case_step wraps plain body and forwards query params", async () => {
+    const bundle = createTestCaseTools(client as never);
+    vi.mocked(api.addTestCaseStep).mockResolvedValueOnce({ createdStepId: 99 });
+
+    await bundle.handlers.add_test_case_step({
+      testCaseId: 366821,
+      body: "First line\nSecond line",
+      afterId: 70,
+      withExpectedResult: true,
+    });
+
+    expect(api.addTestCaseStep).toHaveBeenCalledWith(
+      client,
+      {
+        testCaseId: 366821,
+        bodyJson: {
+          type: "doc",
+          content: [
+            { type: "paragraph", content: [{ type: "text", text: "First line\nSecond line" }] },
+          ],
+        },
+      },
+      { afterId: 70, withExpectedResult: true },
+    );
+  });
+
+  it("add_test_case_step accepts explicit bodyJson and rejects bad input", async () => {
+    const bundle = createTestCaseTools(client as never);
+    vi.mocked(api.addTestCaseStep).mockResolvedValueOnce({ createdStepId: 100 });
+
+    const customDoc = {
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "custom" }] }],
+    };
+    await bundle.handlers.add_test_case_step({
+      testCaseId: 366821,
+      bodyJson: customDoc,
+    });
+    expect(api.addTestCaseStep).toHaveBeenCalledWith(
+      client,
+      { testCaseId: 366821, bodyJson: customDoc },
+      {},
+    );
+
+    await expect(
+      bundle.handlers.add_test_case_step({ testCaseId: 366821 }),
+    ).rejects.toThrow('Either "body" or "bodyJson" must be provided.');
+    await expect(
+      bundle.handlers.add_test_case_step({ testCaseId: 366821, bodyJson: [] }),
+    ).rejects.toThrow('"bodyJson" must be an object (ProseMirror doc).');
+  });
+
+  it("update_test_case_step wraps body and forwards withExpectedResult", async () => {
+    const bundle = createTestCaseTools(client as never);
+    vi.mocked(api.updateTestCaseStep).mockResolvedValueOnce({});
+
+    await bundle.handlers.update_test_case_step({
+      stepId: 69369,
+      body: "edited",
+      withExpectedResult: true,
+    });
+
+    expect(api.updateTestCaseStep).toHaveBeenCalledWith(
+      client,
+      69369,
+      {
+        type: "doc",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "edited" }] }],
+      },
+      { withExpectedResult: true },
+    );
+  });
+
+  it("delete_test_case_step forwards stepId", async () => {
+    const bundle = createTestCaseTools(client as never);
+    vi.mocked(api.deleteTestCaseStep).mockResolvedValueOnce({});
+    await bundle.handlers.delete_test_case_step({ stepId: 69370 });
+    expect(api.deleteTestCaseStep).toHaveBeenCalledWith(client, 69370);
+  });
+
+  it("update_test_case_comment forwards commentId and body", async () => {
+    const bundle = createTestCaseTools(client as never);
+    vi.mocked(api.updateTestCaseComment).mockResolvedValueOnce({});
+    await bundle.handlers.update_test_case_comment({
+      commentId: 3003,
+      body: "edited body",
+    });
+    expect(api.updateTestCaseComment).toHaveBeenCalledWith(client, 3003, "edited body");
+  });
+
+  it("delete_test_case_attachment forwards attachmentId", async () => {
+    const bundle = createTestCaseTools(client as never);
+    vi.mocked(api.deleteTestCaseAttachment).mockResolvedValueOnce({});
+    await bundle.handlers.delete_test_case_attachment({ attachmentId: 1427 });
+    expect(api.deleteTestCaseAttachment).toHaveBeenCalledWith(client, 1427);
   });
 });
