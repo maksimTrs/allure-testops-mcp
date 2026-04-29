@@ -40,6 +40,17 @@ vi.mock("../../../src/api/test-cases.js", () => ({
   listTestCaseAttachments: vi.fn(),
   uploadTestCaseAttachments: vi.fn(),
   downloadTestCaseAttachmentContent: vi.fn(),
+  deleteTestCaseComment: vi.fn(),
+  addTestCaseStep: vi.fn(),
+  buildPlainTextBodyJson: vi.fn((text: string) => ({
+    type: "doc",
+    content: [
+      {
+        type: "paragraph",
+        content: [{ type: "text", text }],
+      },
+    ],
+  })),
 }));
 
 describe("createTestCaseTools", () => {
@@ -526,5 +537,64 @@ describe("createTestCaseTools", () => {
     await expect(
       bundle.handlers.upload_test_case_attachments({ testCaseId: 7, files: [{}] }),
     ).rejects.toThrow('"files[0]" must include either "path" or "base64".');
+  });
+
+  it("delete_test_case_comment forwards commentId", async () => {
+    const bundle = createTestCaseTools(client as never);
+    vi.mocked(api.deleteTestCaseComment).mockResolvedValueOnce(undefined);
+    await bundle.handlers.delete_test_case_comment({ commentId: 3005 });
+    expect(api.deleteTestCaseComment).toHaveBeenCalledWith(client, 3005);
+  });
+
+  it("add_test_case_step wraps plain body and forwards query params", async () => {
+    const bundle = createTestCaseTools(client as never);
+    vi.mocked(api.addTestCaseStep).mockResolvedValueOnce({ createdStepId: 99 });
+
+    await bundle.handlers.add_test_case_step({
+      testCaseId: 366821,
+      body: "First line\nSecond line",
+      afterId: 70,
+      withExpectedResult: true,
+    });
+
+    expect(api.addTestCaseStep).toHaveBeenCalledWith(
+      client,
+      {
+        testCaseId: 366821,
+        bodyJson: {
+          type: "doc",
+          content: [
+            { type: "paragraph", content: [{ type: "text", text: "First line\nSecond line" }] },
+          ],
+        },
+      },
+      { afterId: 70, withExpectedResult: true },
+    );
+  });
+
+  it("add_test_case_step accepts explicit bodyJson and rejects bad input", async () => {
+    const bundle = createTestCaseTools(client as never);
+    vi.mocked(api.addTestCaseStep).mockResolvedValueOnce({ createdStepId: 100 });
+
+    const customDoc = {
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "custom" }] }],
+    };
+    await bundle.handlers.add_test_case_step({
+      testCaseId: 366821,
+      bodyJson: customDoc,
+    });
+    expect(api.addTestCaseStep).toHaveBeenCalledWith(
+      client,
+      { testCaseId: 366821, bodyJson: customDoc },
+      {},
+    );
+
+    await expect(
+      bundle.handlers.add_test_case_step({ testCaseId: 366821 }),
+    ).rejects.toThrow('Either "body" or "bodyJson" must be provided.');
+    await expect(
+      bundle.handlers.add_test_case_step({ testCaseId: 366821, bodyJson: [] }),
+    ).rejects.toThrow('"bodyJson" must be an object (ProseMirror doc).');
   });
 });

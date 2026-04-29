@@ -339,6 +339,44 @@ export function addTestCaseComment(
   return client.post("/api/comment", { testCaseId, body });
 }
 
+export function deleteTestCaseComment(
+  client: AllureApiClient,
+  commentId: number,
+): Promise<unknown> {
+  return client.delete(`/api/comment/${commentId}`);
+}
+
+type ProseMirrorDoc = {
+  type: "doc";
+  content: Array<Record<string, unknown>>;
+};
+
+export function buildPlainTextBodyJson(text: string): ProseMirrorDoc {
+  const lines = text.split("\n");
+  const paragraphs = lines.map((line) =>
+    line.length === 0
+      ? { type: "paragraph" }
+      : {
+          type: "paragraph",
+          content: [{ type: "text", text: line }],
+        },
+  );
+  return { type: "doc", content: paragraphs };
+}
+
+export function addTestCaseStep(
+  client: AllureApiClient,
+  payload: { testCaseId: number; bodyJson: unknown },
+  query: { afterId?: number; withExpectedResult?: boolean } = {},
+): Promise<unknown> {
+  const queryParams: Record<string, string | number | boolean | undefined> = {};
+  if (query.afterId !== undefined) queryParams.afterId = query.afterId;
+  if (query.withExpectedResult !== undefined) {
+    queryParams.withExpectedResult = query.withExpectedResult;
+  }
+  return client.post("/api/testcase/step", payload, queryParams);
+}
+
 export function listTestCaseAttachments(
   client: AllureApiClient,
   testCaseId: number,

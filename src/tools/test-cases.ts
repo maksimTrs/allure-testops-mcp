@@ -698,6 +698,43 @@ export function createTestCaseTools(
         required: ["attachmentId"],
       },
     },
+    {
+      name: "delete_test_case_comment",
+      description: "Delete a comment by id. Affects only the specified comment, leaves all other comments untouched.",
+      inputSchema: {
+        type: "object" as const,
+        properties: { commentId: { type: "number" } },
+        required: ["commentId"],
+      },
+    },
+    {
+      name: "add_test_case_step",
+      description:
+        "Append a new manual scenario step to a test case. Pass either body (plain text — wrapped into a single ProseMirror paragraph) or bodyJson (full ProseMirror doc) to provide the step content. afterId controls placement: if provided, the new step is inserted after that step id at the same level; if omitted, the server appends to the end of root.children. Existing steps are never modified or removed.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          testCaseId: { type: "number" },
+          body: {
+            type: "string",
+            description: "Plain text body. Multi-line strings split into paragraphs. Ignored when bodyJson is provided.",
+          },
+          bodyJson: {
+            type: "object",
+            description: "Full ProseMirror doc shape, e.g. {type:\"doc\",content:[{type:\"paragraph\",content:[{type:\"text\",text:\"...\"}]}]}. Wins over body when both are provided.",
+          },
+          afterId: {
+            type: "number",
+            description: "Step id after which to insert the new step. If omitted, the step is appended.",
+          },
+          withExpectedResult: {
+            type: "boolean",
+            description: "Whether the step should be created with an expected-result child slot. Defaults to false.",
+          },
+        },
+        required: ["testCaseId"],
+      },
+    },
   ];
 
   const handlers = {
@@ -949,6 +986,40 @@ export function createTestCaseTools(
       return api.downloadTestCaseAttachmentContent(client, attachmentId, {
         ...(savePath !== undefined ? { savePath } : {}),
       });
+    },
+    delete_test_case_comment: async (rawArgs: unknown) => {
+      const args = asObject(rawArgs);
+      const commentId = getRequiredNumber(args, "commentId");
+      return api.deleteTestCaseComment(client, commentId);
+    },
+    add_test_case_step: async (rawArgs: unknown) => {
+      const args = asObject(rawArgs);
+      const testCaseId = getRequiredNumber(args, "testCaseId");
+      const afterId = getOptionalNumber(args, "afterId");
+      const withExpectedResult = getOptionalBoolean(args, "withExpectedResult");
+      const explicitBodyJson = args.bodyJson;
+      const plainBody = getOptionalString(args, "body");
+
+      let bodyJson: unknown;
+      if (explicitBodyJson !== undefined) {
+        if (!explicitBodyJson || typeof explicitBodyJson !== "object" || Array.isArray(explicitBodyJson)) {
+          throw new Error("\"bodyJson\" must be an object (ProseMirror doc).");
+        }
+        bodyJson = explicitBodyJson;
+      } else if (plainBody !== undefined) {
+        bodyJson = api.buildPlainTextBodyJson(plainBody);
+      } else {
+        throw new Error("Either \"body\" or \"bodyJson\" must be provided.");
+      }
+
+      return api.addTestCaseStep(
+        client,
+        { testCaseId, bodyJson },
+        {
+          ...(afterId !== undefined ? { afterId } : {}),
+          ...(withExpectedResult !== undefined ? { withExpectedResult } : {}),
+        },
+      );
     },
   };
 
