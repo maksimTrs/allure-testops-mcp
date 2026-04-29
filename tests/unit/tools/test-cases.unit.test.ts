@@ -42,6 +42,7 @@ vi.mock("../../../src/api/test-cases.js", () => ({
   downloadTestCaseAttachmentContent: vi.fn(),
   deleteTestCaseComment: vi.fn(),
   addTestCaseStep: vi.fn(),
+  addTestCaseStepWithFile: vi.fn(),
   updateTestCaseStep: vi.fn(),
   deleteTestCaseStep: vi.fn(),
   updateTestCaseComment: vi.fn(),
@@ -645,5 +646,71 @@ describe("createTestCaseTools", () => {
     vi.mocked(api.deleteTestCaseAttachment).mockResolvedValueOnce({});
     await bundle.handlers.delete_test_case_attachment({ attachmentId: 1427 });
     expect(api.deleteTestCaseAttachment).toHaveBeenCalledWith(client, 1427);
+  });
+
+  it("add_test_case_step with attachmentId routes to attachment-step payload", async () => {
+    const bundle = createTestCaseTools(client as never);
+    vi.mocked(api.addTestCaseStep).mockResolvedValueOnce({ createdStepId: 200 });
+
+    await bundle.handlers.add_test_case_step({
+      testCaseId: 366821,
+      attachmentId: 1432,
+      afterId: 69395,
+    });
+
+    expect(api.addTestCaseStep).toHaveBeenCalledWith(
+      client,
+      { testCaseId: 366821, attachmentId: 1432 },
+      { afterId: 69395 },
+    );
+  });
+
+  it("add_test_case_step prefers attachmentId over body/bodyJson", async () => {
+    const bundle = createTestCaseTools(client as never);
+    vi.mocked(api.addTestCaseStep).mockResolvedValueOnce({});
+
+    await bundle.handlers.add_test_case_step({
+      testCaseId: 366821,
+      attachmentId: 9,
+      body: "ignored text",
+    });
+
+    expect(api.addTestCaseStep).toHaveBeenCalledWith(
+      client,
+      { testCaseId: 366821, attachmentId: 9 },
+      {},
+    );
+  });
+
+  it("add_test_case_step_with_file forwards file and options", async () => {
+    const bundle = createTestCaseTools(client as never);
+    vi.mocked(api.addTestCaseStepWithFile).mockResolvedValueOnce({
+      uploadedAttachment: { id: 1, name: "x.txt" },
+      stepResult: { createdStepId: 1 },
+    });
+
+    await bundle.handlers.add_test_case_step_with_file({
+      testCaseId: 366821,
+      file: { path: "/tmp/a.png", mimeType: "image/png", name: "a.png" },
+      afterId: 69395,
+      withExpectedResult: true,
+    });
+
+    expect(api.addTestCaseStepWithFile).toHaveBeenCalledWith(
+      client,
+      366821,
+      { path: "/tmp/a.png", mimeType: "image/png", name: "a.png" },
+      { afterId: 69395, withExpectedResult: true },
+    );
+  });
+
+  it("add_test_case_step_with_file rejects bad file input", async () => {
+    const bundle = createTestCaseTools(client as never);
+    await expect(
+      bundle.handlers.add_test_case_step_with_file({ testCaseId: 366821, file: {} }),
+    ).rejects.toThrow('"file" must include either "path" or "base64".');
+    await expect(
+      bundle.handlers.add_test_case_step_with_file({ testCaseId: 366821, file: [] }),
+    ).rejects.toThrow('"file" must be an object.');
   });
 });
